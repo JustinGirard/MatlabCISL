@@ -692,6 +692,8 @@ classdef QAQ < handle
             
             [defaltVarname1,defaultVarname2,qualityTrue] = this.advisorqLearning.GetUtility(trueId,0.01);
             
+
+            
             qDecideTrue = [qualityTrue(1); 
                        qualityTrue(2);
                        qualityTrue(3);
@@ -814,6 +816,8 @@ classdef QAQ < handle
             angle = this.angle.*(pi/180);
             angle = bsxfun(@plus,angle,orientation);
             angle = mod(angle, 2*pi);
+            
+            quality = exp(quality); %We don't need to normalize obviously.
             
 
             qDecide = [quality(1) this.stepSize 0; 
