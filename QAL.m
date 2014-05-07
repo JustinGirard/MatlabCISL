@@ -16,7 +16,7 @@ classdef QAL < handle
         advisorqLearning = [];
         lalliance = [];
         adviceexchange = [];
-        
+        adviceThreshold = 0;
         boxForce = 0.05;
         stepSize =0.1;
         rotationSize = pi/4;
@@ -142,7 +142,7 @@ classdef QAL < handle
             c = Configuration.Instance(this.configId );
             
             this.useHal = c.use_hal;
-            
+            this.adviceThreshold = c.advice_threshold;
             this.decideFactor = c.cisl_decideFactor;
             this.advexc_on = c.advexc_on;
             this.adv_epochMax = c.adv_epochMax;
@@ -508,9 +508,21 @@ classdef QAL < handle
             end
             
             id = this.GetQualityId(rstate,0);
-            
-            [quality,experienceProfile,rawQuality] = this.advisorqLearning.GetUtility(id,0.01);
-            
+            if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
+                [quality1,experienceProfile1,rawQuality1] = this.qlearning.GetUtility(id,0.01);
+                [quality2,experienceProfile2,rawQuality2] = this.advisorqLearning.GetUtility(id,0.01);
+                if(sum(rawQuality1,1)*this.adviceThreshold  > sum(rawQuality2,1))
+                    quality = quality1;
+                    experienceProfile = experienceProfile1;
+                    rawQuality = rawQuality1;
+                else
+                    quality = quality2;
+                    experienceProfile = experienceProfile2;
+                    rawQuality = rawQuality2;
+                end
+            else
+                [quality,experienceProfile,rawQuality] = this.advisorqLearning.GetUtility(id,0.01);
+            end
             orientation = robot(6);
             angle = this.angle.*(pi/180);
             angle = bsxfun(@plus,angle,orientation);

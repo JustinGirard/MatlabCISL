@@ -210,7 +210,7 @@ classdef Configuration < handle
 
             config = Configuration.last_configInstance;
             
-            config.advice_row = 1;
+
             
             if(config.configId == id)
                 return;
@@ -220,16 +220,26 @@ classdef Configuration < handle
             config.configId=id ;
             
             %number =  sum([robotNum noiseNum teamLearning coop crowd pf adv inv] .* [1 10 100 1000 10000 100000 1000000 10000000],2)
-            if(id > 1000000000) 
-                comsen = floor(id/1000000000);     id = id - comsen*(1000000000);
+            if(id > 10^10) 
+                timeLimitOff = floor(id/(10^10));     id = id - timeLimitOff *((10^10));
+            else
+                timeLimitOff = 0;
+            end
+            
+            if(id > 10^9)
+                comsen = floor(id/(10^9));     id = id - comsen*((10^9));
             else
                 comsen = 0;
             end
-            if(id > 100000000) 
-                distrwd = floor(id/100000000);     id = id - distrwd *(1000000000);
+            
+            if(id > 10^8)
+                distrwd = floor(id/(10^8));     id = id - distrwd *((10^8));
             else
                 distrwd = 0;
             end
+            
+            
+            
             inv = floor(id/10000000);     id = id - inv*          (10000000);
             adv = floor(id/1000000);      id = id - adv*          (1000000);
             pf = floor(id/100000);        id = id - pf*           (100000);
@@ -246,7 +256,9 @@ classdef Configuration < handle
             config.compressed_sensingOn = 0;            
             config.advice_eta = 0.2; %moving average (new measurement weight)
             config.advice_delta = 0.5; %advice threshold (percent advisor is better)
-
+            config.advice_row = 1;
+            config.advice_threshold = 0;
+            
             config.la_epochMax = 300;
             config.adv_epochMax = 500;
             
@@ -416,8 +428,23 @@ classdef Configuration < handle
                 config.advexc_on = 1;
                 %config.advice_eta = 0.5; %moving average (more bias local performance)
                 %config.advice_delta = 0.3; %advice threshold penalty (70% advisor is better) 
-                config.advice_eta = 0.1; %moving average (more bias local performance)
-                config.advice_delta = 0; %advice threshold penalty (70% advisor is better)                
+                %config.advice_eta = 0.1; %moving average (more bias local performance)
+                %config.advice_delta = 0; %advice threshold penalty (70% advisor is better)                
+                
+                
+                %AAA#_ settings here (under aggressive Advice Exchange)
+                %config.advice_eta = 0.7; %moving average (% bias towards past performance)
+                %config.advice_delta = 0.3; %advice threshold (percent advisor is better)
+                %config.advice_threshold = 1.3; %only take advice in a state, if their advice is much better than our own
+                %config.adv_epochMax = 100;
+
+                %BBB#_ settings here (under aggressive Advice Exchange)
+                config.advice_eta = 0.5; %moving average (% bias towards past performance) [0 1[
+                config.advice_delta = 0.5; %advice threshold (percent advisor is better)
+                config.advice_threshold = 1.1; %only take advice in a state, if their advice is much *somewhat* better than our own
+                config.advice_row = 0.9; %Learn who is good recently
+                config.adv_epochMax = 75; %short epoch for fast
+
             end
             
             if(inv == 1)
@@ -443,7 +470,17 @@ classdef Configuration < handle
                 config.simulation_Realism = 2;
                 config.lalliance_useCooperation = 1;
                 config.lalliance_useCooperationLimit = 1;
-            end            
+            end     
+            
+            if(timeLimitOff == 1)
+                disp('Time Limit Forced Large');
+                %config.numIterations = 10000000000000;
+                config.numIterations = 100000000;
+                config.lalliance_acquiescence = 20000; %long acquiescence limit                
+            else
+                disp('Time Limit Forced On');
+                config.numIterations = 15000;
+            end
         end
     end
     methods

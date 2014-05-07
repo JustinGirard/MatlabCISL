@@ -217,9 +217,6 @@ RefreshConfigId();
 function RefreshConfigId()
     configId = 0;
 
-    timeLimitOn = get(findobj('Tag', 'rbTimeLimitOn'),'Value');
-    timeLimitOff = get(findobj('Tag', 'rbTimeLimitOff'),'Value');
-
     comSenOff = get(findobj('Tag', 'rbComSenOff'),'Value');
     comSenOn = get(findobj('Tag', 'rbComSenOn'),'Value');
     
@@ -235,6 +232,7 @@ function RefreshConfigId()
     noise010 =  get(findobj('Tag', 'rbNoise010'),'Value');
     noise020 =  get(findobj('Tag', 'rbNoise020'),'Value');
     noise040 =  get(findobj('Tag', 'rbNoise040'),'Value');
+    
     
     simIter =  get(findobj('Tag', 'rbSimIter'),'Value');
     indivIter =  get(findobj('Tag', 'rbIndivIter'),'Value');
@@ -282,15 +280,14 @@ function RefreshConfigId()
     
     %these properties are added later, kinda hacked in. Terrible.
     if(rbDistRwdOn == 1)
-        number =  rbDistRwdOn*(10^8)+number;
+        number =  rbDistRwdOn*100000000+number;
+        if(rbDistRwdOn == 1)
+            number =  comSenOn*1000000000+number;
+        end
+    elseif(comSenOn == 1)
+        number =  rbDistRwdOn*100000000+number;
+        number =  comSenOn   *1000000000+number;
     end
-    if(comSenOn == 1)
-        number =  comSenOn   *(10^9)+number;
-    end
-    if(timeLimitOff == 1)
-        number =  timeLimitOff   *(10^10)+number;
-    end
-    
     
     set(findobj('Tag', 'numId'),'String',num2str(number ));
     set(findobj('Tag', 'numSimulations'),'String',num2str(1));
