@@ -265,9 +265,9 @@ classdef Configuration < handle
             %starting with 1000? Then do mini tests
             if(robotNum == 2)
                 disp('3 robots');
-                config.numTest = 300;
+                config.numTest = 3; %originally 300
                 config.numRun = 1;
-                config.numIterations = 2000;
+                config.numIterations = 5; %2000 originally
                 config.numRobots = 3;
                 config.numObstacles = 4;
                 config.numTargets = 3;    
@@ -286,9 +286,9 @@ classdef Configuration < handle
             
             elseif(robotNum == 3)
                 disp('8 robots');
-                config.numTest = 300;
+                config.numTest = 3; %originally 300
                 config.numRun = 1;
-                config.numIterations = 15000;
+                config.numIterations = 5; %15000 originally
                 config.numRobots = 8;
                 config.numObstacles = 4;
                 config.numTargets = 8;    
@@ -306,9 +306,9 @@ classdef Configuration < handle
                 
             else
                 disp('12 robots!');
-                config.numTest = 300;
+                config.numTest = 3; %originally 300
                 config.numRun = 1;
-                config.numIterations = 15000;
+                config.numIterations = 5; %15000 originally
                 config.numRobots = 12;
                 config.numObstacles = 4;
                 config.numTargets = 12;    
@@ -405,7 +405,7 @@ classdef Configuration < handle
                 disp('L-Alliance Old Style! (no distance) (no limit)');
                 config.cisl_type= 2;
                 config.lalliance_useDistance = 0;          
-                config.numIterations = 1000000000;
+                config.numIterations = 5; %originally 1000000000
                 
             end
 
