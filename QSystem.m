@@ -467,6 +467,8 @@ classdef QSystem < handle
             angle = bsxfun(@plus,angle,orientation);
             angle = mod(angle, 2*pi);
 
+            quality = exp(quality); %We don't need to normalize obviously.
+            
             qDecide = [quality(1) this.stepSize 0; 
                        quality(2) 0 this.rotationSize;
                        quality(3) 0 -this.rotationSize;
