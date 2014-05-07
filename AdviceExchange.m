@@ -13,9 +13,9 @@ classdef AdviceExchange < handle
     properties
         rewardSum = 0;
         learnsSum = 0;
-        eta = 0.7; % [0, 1 )
+        eta = 0.7; % [0, 1 [
         delta = 0.3; %  [0,1]
-        row = 1;% [0.9, 1 )
+        row = 1;% [0.9, 1 [
 
         robotId = 0;
         numRobots = 0;
@@ -96,8 +96,11 @@ classdef AdviceExchange < handle
             currentQual = this.s_qualityMetrics.Get([this.c_currentQual this.robotId]);
             
             %save the current quality if we should be doing that.
+            bestQual = bestQual*this.row;
             if(currentQual > bestQual)
-                this.s_qualityMetrics.Put([this.row*this.c_bestQual this.robotId],currentQual);
+                this.s_qualityMetrics.Put([this.c_bestQual this.robotId],currentQual);
+            else
+                this.s_qualityMetrics.Put([this.c_bestQual this.robotId],bestQual);
             end
             
             %update the average quality (over many epochs)

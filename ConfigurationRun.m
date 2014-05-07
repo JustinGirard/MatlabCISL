@@ -95,7 +95,7 @@ classdef ConfigurationRun < handle
         advice_delta = 0.0;
         
         advice_row = 1;
-           
+        advice_threshold = 0;% threshold*ourExpectedIndividualReward <= theirExpectedIndividualReward  --> take advice
         
         %Amount of task types, and if we learn about each TASK or it's TYPE
         % (it's intractable to assume each task as independent)
