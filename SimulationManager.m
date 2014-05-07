@@ -352,12 +352,11 @@ classdef SimulationManager < handle
               %  cd('\..');
                 iterations = size(iterDat,1);
             end
-            seed = c(5)+c(6)+this.AgentId();
+            seed = c(5)+c(6);
             
             try
-                
-            rand('seed',double(seed) );
-            randn('seed',double(seed));
+                rand('seed',double(seed) );
+                randn('seed',double(seed));
             catch err
                 this.AgentId()
                 rng(seed);
