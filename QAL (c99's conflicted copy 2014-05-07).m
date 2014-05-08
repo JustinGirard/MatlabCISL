@@ -1,4 +1,4 @@
-classdef QAQ < handle 
+classdef QAL < handle 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -7,16 +7,16 @@ classdef QAQ < handle
         %   
         %   
         %   
-    %Q-Learning, Advice Exchange, L-Alliance
-    % Advise a single robot
-    % Tell it what actions to take given a robot state vector
-    
+        %Q-Learning, Advice Exchange, L-Alliance
+        % Advise a single robot
+        % Tell it what actions to take given a robot state vector
+
     properties
-        qteam = [];
         qlearning = [];
         advisorqLearning = [];
+        lalliance = [];
         adviceexchange = [];
-        
+        adviceThreshold = 0;
         boxForce = 0.05;
         stepSize =0.1;
         rotationSize = pi/4;
@@ -58,17 +58,28 @@ classdef QAQ < handle
         
         la_epochTicks = 0;
         adv_epochTicks = 0;
-
-        la_epochMax = 200;
-        adv_epochMax = 200;
-
+        la_epochMax = 300;
+        adv_epochMax = 300;
         s_encodedCodes = [];
         
-        pIncorrectAction = 0;
-        numActions = 0;
+        saExecTruth = [];
+        saExecBelief = [];
         
+
+        %tracking reward and actions
+        pIncorrectAction = 0;
+        
+        aIncorrectReward = 0;
+        aFalseReward = 0;
+        aTrueReward = 0;
+
+        dIncorrectMeasurement = 0;
+        vIncorrectMeasurement = 0;
+        M2IncorrectMeasurement = 0;
+
         vIncorrectAction = 0;
         vIncorrectReward = 0;
+        
         vFalseReward = 0;
         vTrueReward = 0;
         
@@ -76,34 +87,32 @@ classdef QAQ < handle
         M2IncorrectReward = 0;
         M2FalseReward = 0;
         M2TrueReward = 0;
-
-        dIncorrectMeasurement = 0;
-        vIncorrectMeasurement = 0;
-        M2IncorrectMeasurement = 0;
+        
+        %Average Reward per action
+        aTeamReward = 0;
+        %Total Simulation Reward
+        tTeamReward = 0;
+        
+        numActions = 0;
         numActionsDistance = 0;
-        
-        aIncorrectReward = 0;
-        aTrueReward = 0;
-        aFalseReward = 0;
-        numLearns = 0;        
-        
-        teamId = [];
-        rewardLast = 0;
-        lastTeamAction = 1;
-        
-        advexc_on = 0;        
-        targetsFinishedLast = 0;
-
-        individualRewardSum = 0;
-        individualRewardSteps = 0;
-        useCooperation = 0;
-        
-        ticksTotal =0;
-        epochConvergeTicks = 0;
-        lastTargetId = 0;
-        lastTargetPos = [0 0];
+        numLearns = 0;
+        advexc_on = 0;
+        decideFactor = 0;
         rewardDistanceScale = 0;
         
+        sizeRow = 10;
+        sizeCol = 100;
+        useDistance = 0;
+        
+        %Three lines for compressed sensing
+        firstCompress = 0;
+        dict = [];
+        workingDict = [];
+        useCompressedSensing = 0;
+
+        useHal = 0;
+        hal = [];
+        minAttempts = 0;
     end
     
     
@@ -123,78 +132,61 @@ classdef QAQ < handle
         %   
         %   
         %   
-        function this = QAQ(configId,robotId,encCodes)
+        %Constructor
+        function this = QAL(configId,robotId,encCodes)
             %this.s_encodedCodes = zeros(200,200,400);
             this.s_encodedCodes =encCodes;
             this.robotId = robotId;
             this.configId = configId;
             
             c = Configuration.Instance(this.configId );
-            this.useCooperation = c.lalliance_useCooperation;
-            this.la_epochMax = c.qteam_epochMax;
+            
+            this.useHal = c.use_hal;
+            this.adviceThreshold = c.advice_threshold;
+            this.decideFactor = c.cisl_decideFactor;
+            this.advexc_on = c.advexc_on;
             this.adv_epochMax = c.adv_epochMax;
+            this.la_epochMax = c.la_epochMax;
             
             this.maxGridSize = c.cisl_MaxGridSize;
             this.worldHeight = c.world_Height;
             this.worldWidth = c.world_Width;
-            this.advexc_on = c.advexc_on;
-
+            
             this.boxForce = 0.05;
 
             %instance core objects
             this.qlearning = Qlearning(this.actionsAmount,this.arrBits,configId );
+            this.lalliance = LAllianceAgent(c,robotId );
             
-            % State structure
-            % 
-            % Task Types    -> TT(1-N), {1,0}
-            
-            % independnt from
-            % Return Status -> RS(1-N),{1,0}
-
-            % independnt from
-            % Other Robot On Task -> OR (1-N), {1,0}
-            
-            %State = [TT RS OR]
-            this.teamId = [1 1]; 
-            teamActionsAmount = 4;
-            this.qteam = Qlearning(teamActionsAmount,12,configId );
-            
-            this.adviceexchange = AdviceExchange(robotId,c.numRobots,c.robot_sameStrength,configId);
-            
+            if(this.advexc_on == 1)
+                this.adviceexchange = AdviceExchange(robotId,c.numRobots,c.robot_sameStrength,configId);
+            end
+            if(this.useHal ==1)
+                this.hal = HAL();
+                this.minAttempts = 100;
+            end
             this.advisorqLearning =  this.qlearning;
             
             this.triggerDistance = c.cisl_TriggerDistance;
+            this.useDistance = c.lalliance_useDistance;
+            
             %set up robot properties (should live in robot layer
-            this.la_epochTicks = 0;
+            
+           % this.saExecTruth = SparseActionHashtable(this.arrBits,actions);
+           % this.saExecBelief = SparseActionHashtable(this.arrBits,actions);
+            
             this.adv_epochTicks = 0;
-            this.ticksTotal =0;
-            this.epochConvergeTicks = c.qteam_epochConvergeTicks;
+            this.la_epochTicks = 0;
             this.rewardDistanceScale = c.qlearning_rewardDistanceScale;
+            
+            
+            this.useCompressedSensing = c.compressed_sensingOn;
+            if(this.useCompressedSensing ==1)
+                this.InitCompressSensing();
+            end
+        end
+        
 
-        end
-        
-        function IncrementAcquiescenceLimit(this)
-            this.ticksTotal = this.ticksTotal +1;
-        end
-        function limit = GetCurrentAcquiescenceLimit(this)
-            %30-000 is when this thang converges to 1, and sharply as well
-            limit= (1./(1+exp(-this.ticksTotal /500 + this.epochConvergeTicks*0.001666666666667)))*this.la_epochMax;  
-            limit = limit+100;
-        end
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function SetRobotProperties(this,stepSizeIn,rotationSizeIn)
-            this.stepSize = stepSizeIn;
-            this.rotationSize = rotationSizeIn;
-        end
-        
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
@@ -206,18 +198,9 @@ classdef QAQ < handle
         %   
         function TrimForSave(this)
             this.s_encodedCodes.Empty();
-        end        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function targetId = GetTask(this)
-            targetId = this.targetId;
         end
+
+        
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
@@ -227,8 +210,8 @@ classdef QAQ < handle
         %   
         %   
         %   
-        function val= GetLearnedActions(this)
-            val = this.qlearning.learnedActions;
+        function LoadAfterSave(this,cdIn) 
+            this.s_encodedCodes.Fill(cdIn);
         end
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -252,10 +235,46 @@ classdef QAQ < handle
         %   completion time
         %   [task1_min task1_max   task2_min task2_max]
         %
-
         function td = GetTeamLearningData(this)
-            td = [0 0 0 0];
+            td = this.lalliance.GetLearningData(); 
         end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % 
+        %   Class Name
+        %   
+        %   Description 
+        %   
+        %   
+        %   
+        function SetRobotProperties(this,stepSizeIn,rotationSizeIn)
+            this.stepSize = stepSizeIn;
+            this.rotationSize = rotationSizeIn;
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % 
+        %   Class Name
+        %   
+        %   Description 
+        %   
+        %   
+        %   
+        function targetId = GetTask(this)
+            targetId = this.targetId;
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % 
+        %   Class Name
+        %   
+        %   Description 
+        %   
+        %   
+        %   
+        function val= GetLearnedActions(this)
+            val = this.qlearning.learnedActions;
+        end       
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
@@ -268,15 +287,11 @@ classdef QAQ < handle
         % Reset - we have changed to a new world and need to drop any values
         % or settings that are related to previous simulations
         function Reset(this)
-            this.targetId = 0;
-            this.rewardLast  = 0;
-            this.teamId = [0 0]; 
-            this.lastTeamAction = 1;
-                  
-            this.qteam.Reset();
+            this.lalliance.Reset();
+            
             this.qlearning.Reset();
-            this.adv_epochTicks = 0;
             this.la_epochTicks = 0;
+            this.adv_epochTicks = 0;
             this.advisorqLearning = this.qlearning;
             %track our actions, reward, and times we have 'learned'
             this.simulationRunActions = 0;
@@ -289,7 +304,6 @@ classdef QAQ < handle
             this.simulationRunActionsTargetCoop = 0;
             this.simulationRunLearnsTarget = 0; 
             this.simulationRewardObtainedTarget = 0;
-
             
             this.pIncorrectAction = 0;
             this.numActions = 0;
@@ -332,317 +346,11 @@ classdef QAQ < handle
         %   
         %   
         %   
-        function CheckUnavaliableTask(this,robotState)
-                [robPos, robOrient, millis, obstaclePos,targetPos,goalPos,targetProperties,robotProperties ] ...
-                    = robotState.GetSnapshot();
-            if(this.targetId > 0)
-                if targetProperties(this.targetId,1) == 1 
-                    this.targetId = 0;
-                end
-            end
-            %if(this.targetId > 0)
-            %    if targetProperties(this.targetId,4) > 0 
-            %        if targetProperties(this.targetId,4) ~= robotState.id
-            %            this.targetId = 0;
-            %        end
-            %    end
-            %end
-        
-        end
-        
-        
-        function [currentId, indexVals] = GetCurrentTeamState(this,robotState)
-            [robPos, robOrient, millis, obstaclePos,targetPos,goalPos,targetProperties,robotProperties ] ...
-                = robotState.GetSnapshot();
-            [targetTargetedStatus,robotOn1,robotOn2] = GetTargetTargetedStatus(this,targetProperties,robotProperties);
-
-            %otherRobotAssigned = (targetProperties(:,4) >0) - (carriedByMe );
-            targetDistances = sqrt((targetPos(:,1).^2).*(targetPos(:,2).^2));
-            
-            % A measure of our returned targets
-            targetsReturned = targetProperties(:,1);
-            
-            if(this.useCooperation == 1)
-                fullyTargeted = targetTargetedStatus > 1;
-            else
-                fullyTargeted  = targetTargetedStatus >0;
-            end
-            
-            %building the state
-            % [freeType1Targets freeType2Targets freeRobots] 
-            freeTargets = targetsReturned == 0;
-            freeTargets = freeTargets .* (1-fullyTargeted);
-
-            freeTargetDistances = freeTargets.*  targetDistances + 1000*  (1- freeTargets) ;
-            minimum = 999;
-            closestTargets= [0; 0; 0;];
-            
-            targetTypes = targetProperties(:,3);
-            
-            robotOn = zeros(size(targetProperties,1),1);
-
-            
-            for i=1:size(targetProperties,1)
-                %save other robot id, if we are not the robot in charge
-                if(fullyTargeted(i) == 0 && targetTargetedStatus(i) > 0 && this.targetId ~=i)
-                    robotOn(i) = max([robotOn1(i) robotOn2(i)]) ;
-                    robotOn(i) = robotProperties(robotOn(i),5); %type == index 5
-                end
-                
-                %save other robotid, IF we have a cooperator
-                if(this.targetId == i && this.useCooperation == 1) %if we have a task
-                    if(robotOn1(i) == this.targetId)
-                        robotOn(i) = robotOn2(i);
-                    elseif(robotOn2(i) == this.targetId)
-                        robotOn(i) = robotOn1(i);
-                    end
-                    if(robotOn(i) > 0)
-                        robotOn(i) = robotProperties(robotOn(i),5); %type == index 5
-                    end
-                end
-                if(freeTargetDistances(i) <= minimum )
-                    for n=1:3
-                        if(closestTargets(n) == 0)
-                            closestTargets(n) = i;
-                            break;
-                        elseif freeTargetDistances(i) < freeTargetDistances(n) 
-                            if(n+2 <= 3)
-                                closestTargets(n+2) = closestTargets(n+1);
-                            end
-                            if(n+1 <= 3)
-                                closestTargets(n+1) = closestTargets(n);
-                            end
-                            closestTargets(n) = i;
-                            break;
-                        end
-                    end
-                end
-            end
-            
-            cids = closestTargets(1:3);
-            
-            indexVals = cids;
-             
-            
-     
-            a = zeros(1,3);
-            k = a;
-            if(this.targetId == 0)
-                start = 1;
-            else
-                start = 2;
-                a(1) = robotOn(this.targetId);
-                k(1) = targetTypes(this.targetId);
-            end
-            
-            buffer = start -1;
-            for i = start :3
-                if(cids(i-buffer) ~= 0)
-                    a(i) = robotOn(cids(i-buffer));
-                    k(i) = targetTypes(cids(i-buffer));
-                end
-            end
-            
-            assignedRobots = robotProperties(:,1) == 0;
-
-            u = sum(assignedRobots,1) > 0;
-            currentId = [k a u];%[TT RS OR]
-        end
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function acquiesce = ChooseTask(this,robotState)
-            %every epoch each robot learns.
-            acquiesce =0;
-            [robPos, robOrient, millis, obstaclePos,targetPos,goalPos,targetProperties,robotProperties ] ...
-                = robotState.GetSnapshot();
-            % targetProperties       
-            % 1 [isReturned
-            % 2 weight                 
-            % 3 type(1/2)          
-            % 4 carriedBy           
-            % 5 size                   
-            % 6 lastRobotToCarry]
-            % A few needed variables
-            %targetTypes =  targetProperties(:,3)-1;
-            %returnStatus =  targetProperties(:,1);
-            acquiesce = 0;
-            
-            
-            
-            [currentId,targetIds] = this.GetCurrentTeamState(robotState);
-
-            
-            %k1 k2 k3 a1 a2 a3 u
-            currentId(4:6) = currentId(4:6) > 0; 
-
-            rewardCurrent = 0;
-            %Continuous Reward:
-            %   +5 reward for current assignment to an otherwise unoccupied task.
-
-            %Event Based Reward:
-            %   +10 reward for returning a task
-
-            if(currentId(4) == 0 && this.targetId > 0)
-                rewardCurrent = rewardCurrent +5;
-            end
-            if(this.targetId == 0)
-                %minor reward to remain unassinged.
-                rewardCurrent = rewardCurrent +0.1;
-            end
-            
-
-            if(this.targetId ~= 0)
-                if(targetProperties(this.targetId,1) == 1)
-                    rewardCurrent = rewardCurrent +20;
-                end
-                
-                %Reward for being unable to move a box at all
-                if(this.lastTargetId  == this.targetId)
-                    if( targetProperties(this.targetId, 7) == this.robotId ||...
-                        targetProperties(this.targetId, 4) == this.robotId )
-                        if( this.lastTargetPos == targetPos(this.targetId, 2:3))
-                            rewardCurrent = rewardCurrent -10;
-                        end
-                    end
-                end
-                
-            end
-            
-            rewardCurrent = rewardCurrent+ this.individualRewardSum/this.individualRewardSteps ;
-            
-            %add in our average individual reward per step
-            if(rewardCurrent < 0)
-                rewardCurrent = 0;
-            end
-            this.individualRewardSum = 0;
-            this.individualRewardSteps = 0;
-
-            currentId = [currentId(1:3)*[1 3 10]'+1 currentId(4:6)*[1 2 4]'+1 ];
-            this.qteam.Learn(this.teamId,currentId,this.lastTeamAction,rewardCurrent);
-            
-            % update values
-            this.teamId = currentId;
-            this.rewardLast = rewardCurrent;
-            [quality,experienceProfile] = this.qteam.GetUtility(this.teamId ,0.01);
-            
-            totalQual = sum(quality);
-            zeroQual = (quality == 0);
-            
-            
-            quality = quality + zeroQual.*totalQual.*0.05;
-
-            totalQual = sum(quality);
-            actionSelect = totalQual*rand(); %pick a number
-            
-            i = 0;
-            index = 1;
-            num = 0;
-            while (num < actionSelect)
-                i = i+1;
-                num = num + quality(i);
-                if num > actionSelect
-                    actionIndex = i;
-                    %actionIsSelected = index
-                    break;
-                end
-            end
-            
-            this.lastTeamAction = actionIndex;
-            this.lastTargetId  = this.targetId;
-            if(this.lastTargetId  > 0)
-                this.lastTargetPos = targetPos(this.targetId, 2:3);
-            
-            end
-            %now we execute the action.
-            if(actionIndex >3)
-                if(this.targetId ~= 0)
-                    acquiesce =1;
-                end
-                this.targetId = 0;
-            else
-                targetChoice = targetIds(actionIndex);
-                if(targetChoice == 0) 
-                    for z=1:3
-                        if targetIds(z) ~= 0
-                            targetChoice = targetIds(z);
-                        end
-                    end
-                end
-
-                if(targetChoice  > 0)
-                    if(targetChoice  ~= this.targetId && ...
-                        this.targetId  > 0)
-                        acquiesce = 1;
-                    end
-                    this.targetId = targetChoice ;
-
-                end
-                
-            end
-            
-            
-            
-            
-           
-            
-        end
-        
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function [targetTargetedStatus, robotOn1, robotOn2] = GetTargetTargetedStatus(this,targetProperties,robotProperties)
-            %rpid_typeId = 5;
-            currentTargetIndex = 1;
-            robotOn1 = zeros(size(targetProperties,1),1);
-            robotOn2 = zeros(size(targetProperties,1),1);
-            
-            targetedTasks = robotProperties(:,currentTargetIndex);
-            
-            %%% WE EXCLUDE OURSELVES
-            targetedTasks (this.robotId) = [];
-            %%%
-            
-            targetTargetedStatus = zeros(size(targetProperties,1),1);
-            for z=1:size(targetedTasks,1)
-                if(targetedTasks(z) > 0)
-                    targetTargetedStatus(targetedTasks(z)) = targetTargetedStatus(targetedTasks(z)) +1;
-                    if(robotOn1(targetedTasks(z)) == 0)
-                        robotOn1(targetedTasks(z)) = z;
-                    elseif(robotOn2(targetedTasks(z)) == 0)
-                        robotOn2(targetedTasks(z)) = z;
-                        
-                    end
-                end
-             end
-        end
-        
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function acquiescence = EpochCounter(this,rstate)
+        function EpochCounter(this,rstate)
                 this.la_epochTicks =	this.la_epochTicks +1;
                 this.adv_epochTicks =	this.adv_epochTicks +1;
 
-                if(this.la_epochTicks > this.GetCurrentAcquiescenceLimit())
+                if(this.la_epochTicks > this.la_epochMax)
                     this.la_epochTicks = 1;
                 end
 
@@ -651,16 +359,10 @@ classdef QAQ < handle
                 end
 
                 %advice exchange will choose an advisor
-                acquiescence = 0;
-                %Q-Learning will choose a task
+                
+                %l-alliance will choose a task
                 if(this.la_epochTicks == 1)
-                    acquiescence = this.ChooseTask(rstate);
-                elseif(this.targetId == 0)
-                    [currentId, indexVals] = GetCurrentTeamState(this,rstate);
-                    unTargetedNear  = sum(currentId(4:6) == 0,2) > 0;
-                    if(unTargetedNear  > 0)
-                        acquiescence = this.ChooseTask(rstate);
-                    end                    
+                    this.lalliance.StartEpochChooseTask(rstate);
                 end                
                 
                 if(this.adv_epochTicks == 1)
@@ -675,10 +377,261 @@ classdef QAQ < handle
                         end
                     end
                 end
-        end        
+        end
+        function KillHalAction(this)
+            if(this.useHal ==1)
+                this.hal.ForgetAdvisedVector();    
+            end
+        end
+       
+        function [act,amount] = GetHalAction(this,rstate)
+            act =0;
+            amount = 0;
+            if(this.targetId == 0)
+                this.KillHalAction();
+                return;
+            end
+            [targets,obstacles,goal,borderOfWorld,robot,targetProperties,robotProperties] = rstate.GetCurrentState();
+            hasItem = targetProperties(this.targetId,4) == this.robotId || targetProperties(this.targetId,7) == this.robotId;
+            
+            
+            avdVec =[0 0];
+            if(this.useHal ==1)
+                [temp1,closeObsId] = min(obstacles(:,1));
+                if(hasItem ~= 1)
+                    distT = targets(this.targetId, 2:3);
+                else
+                    distT = goal( 2:3);
+                end
+                distT = sqrt(sum(distT.^2));
+                distO = obstacles(closeObsId, 2:3);
+                distO = sqrt(sum(distO.^2));
+                
+                %If we are up against objects, dont take advice (sparse
+                %data here)
+                if(distT < 1 || distO <1.1)
+                    this.KillHalAction();
+                    return;
+                end    
+                
+                %itemXY obsXY goalXY
+                [default,obsId] = min(obstacles(:,1),[],1);
+                if(hasItem == 1)
+                    stateIn = [goal(2:3) obstacles(obsId,2:3)];
+                else
+                    stateIn = [targets(this.targetId,2:3) obstacles(obsId,2:3)];
+                end
+                
+                avdVec = this.hal.GetAdvisedVector(stateIn);
+                
+                if(sum(avdVec) == 0)
+                    return; %no confidence from GMM!
+                end
+                
+                a1 = atan2(avdVec(2) ,avdVec(1) );
+
+                robAng = mod(robot(6), 2*pi);
+
+                if(robAng > pi)
+                    robAng = - 2*pi + robAng;
+                elseif(robAng <-pi)
+                    robAng = 2*pi + robAng;
+                end
+                a1 = a1-robAng;
+                
+                if(a1 > pi)
+                    a1 = - 2*pi + robAng;
+                elseif(a1 <-pi)
+                    a1 = 2*pi + robAng;
+                end
+                
+                if(abs(a1) < 0.1)
+                    act ='f'; %move forward
+                    amount = 0;
+                elseif(a1 > 0)
+                    act ='l'; %turn left
+                    amount = a1;
+                else
+                    act ='r'; %turn right
+                    amount = a1;
+                end
+
+            end 
+        end
         
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % 
+        %   Class Name
+        %   
+        %   Description 
+        %   
+        %   
+        %   
+        % Get the action from the learning layer, considering the current
+        % robotState
+        function [action, actionId,experienceProfile,acquiescence] = Act(this,rstate)
+            this.EpochCounter(rstate);
+            [targets,obstacles,goal,borderOfWorld,robot,targetProperties,robotProperties] = rstate.GetCurrentState();
+            this.KillHalAction();
+
+            %make sure we are working toward the right target (box)
+            oldTarg = this.targetId;
+            this.lalliance.StartEpochChooseTask(rstate);
+            newTarg = this.lalliance.GetTask(rstate);
+            this.targetId = newTarg;
+            actHal = 0;
+            angHal = 0;
+            
+
+            actHal = 0;
+            angHal = 0;
+            
+            this.simulationRunActions = this.simulationRunActions +1;
+            if(this.targetId > 0)
+                this.simulationRunActionsTarget = this.simulationRunActionsTarget +1;
+                for rcoop = 1:size(robotProperties,1)
+                    if(robotProperties(rcoop,1) == this.targetId && rcoop ~= this.robotId)
+                        this.simulationRunActionsTargetCoop = this.simulationRunActionsTargetCoop  +1;
+                    end
+                end
+                if(this.useHal == 1)
+                    [actHal,angHal] = this.GetHalAction(rstate );            
+                end
+            end
+
+            
+            if(this.actionCount > 0)
+                this.actionCount = this.actionCount -1;
+                action = this. lastAction (2:3);
+                actionId = this.lastAction (1);
+                return;
+            end
+            
+            id = this.GetQualityId(rstate,0);
+            if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
+                [quality1,experienceProfile1,rawQuality1] = this.qlearning.GetUtility(id,0.01);
+                [quality2,experienceProfile2,rawQuality2] = this.advisorqLearning.GetUtility(id,0.01);
+                if(sum(rawQuality1,1)*this.adviceThreshold  > sum(rawQuality2,1))
+                    quality = quality1;
+                    experienceProfile = experienceProfile1;
+                    rawQuality = rawQuality1;
+                else
+                    quality = quality2;
+                    experienceProfile = experienceProfile2;
+                    rawQuality = rawQuality2;
+                end
+            else
+                [quality,experienceProfile,rawQuality] = this.advisorqLearning.GetUtility(id,0.01);
+            end
+            orientation = robot(6);
+            angle = this.angle.*(pi/180);
+            angle = bsxfun(@plus,angle,orientation);
+            angle = mod(angle, 2*pi);
+            
+            qDecide = [quality(1) this.stepSize 0; 
+                       quality(2) 0 this.rotationSize;
+                       quality(3) 0 -this.rotationSize;
+                       quality(4) this.boxForce angle(1);
+                       quality(5) this.boxForce angle(2);
+                       quality(6) this.boxForce angle(3);
+                       quality(7) this.boxForce angle(4)];
+            acquiescence = 0;
+            
+            
+            %Kind of a hack for L-Alliance, if it forces us to drop a task
+            % We hack that action into the framework
+            if(newTarg ~=oldTarg && newTarg==0)
+                %override default action to be "drop box" action.
+                action = qDecide(7,:); %hard coded action #7 - a hack
+                actionId = 7; %This is the drop action
+                acquiescence=1;
+                return;
+            end
+            
+            %update our tracking metrics - Incorrect Actions
+            this.UpdateIncorrectActions(rawQuality,rstate);
+
+            totalQual = sum(quality);
+            zeroQual = (quality == 0);
+            %make sure every action has at least 0.005 (0.5%)probability
+            %this will help discover new actions, a tiny tiny bit...
+            
+            quality = quality + zeroQual.*totalQual.*0.05;
+
         
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %Here we add bias toward human chosen actions
+            minExp = sum(experienceProfile);
+            
+            
+            %Here we calculate an exploration term. The less experience we
+            %have, the more random our behaviour
+            if(this.decideFactor > 0)
+                %disp('expChange')
+                %quality 
+
+                minExp = minExp+1;
+                quality = quality.^(minExp/this.decideFactor);   
+                %quality 
+            end
+            
+            totalQual = sum(quality);
+            actionSelect = totalQual*rand(); %pick a number
+            
+            i = 0;
+            index =1;
+            num = 0;
+            while (num < actionSelect)
+                i = i+1;
+                num = num + quality(i);
+                if num > actionSelect
+                    index = i;
+                    %actionIsSelected = index
+                    break;
+                end
+                
+            
+            end
+            
+            %[decision,index] = max(qDecide(:,1));
+            %action = qDecide(index,1:3);
+            actionOverride = 0;
+            if(this.useHal == 1)
+                if(minExp < this.minAttempts) %Human only overrides during learning
+                    if(actHal == 'f')
+                        actionOverride =1;
+                    elseif(actHal == 'r')
+                        actionOverride =3;
+                    elseif(actHal == 'l')
+                        actionOverride =2;
+                    end
+                else
+                    this.KillHalAction();
+                end
+
+                if(actionOverride > 0)
+                    if(abs(angHal) < abs(this.rotationSize))
+                        %disp('decrease angle size');
+                        qDecide(2:3,3)=angHal*0.9;
+                    end
+                    index = actionOverride;
+                else
+                    this.KillHalAction();
+                    %index = 6;
+    %               disp(strcat(num2str(this.robotId),'-following...',strcat(num2str(actionOverride))));
+                end
+            end
+            action = qDecide(index,2:3);
+            this.lastAction = [index action];
+            
+           % if(index ==1 || index >3)
+           %     this.actionCount = 2;
+           % end
+            
+            actionId = index;
+            
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
         %   
@@ -690,10 +643,9 @@ classdef QAQ < handle
             
             trueId = this.GetTrueQualityId(rstate,0);
             
-            [defaltVarname1,defaultVarname2,qualityTrue] = this.advisorqLearning.GetUtility(trueId,0.01);
+            [defaltVarname1,defaultVarname2,qualityTrue] = this.advisorqLearning.GetUtility(trueId,0.00001);
             
 
-            
             qDecideTrue = [qualityTrue(1); 
                        qualityTrue(2);
                        qualityTrue(3);
@@ -708,20 +660,20 @@ classdef QAQ < handle
             thisPosMess = robot(1:2);
             [targets,obstacles,goal,borderOfWorld,robot,targetProperties,robotProperties] = rstate.GetTrueCurrentState();
             thisPosTrue = robot(1:2);
+
             
             thisPosErr = (thisPosMess -  thisPosTrue).^2;
             thisPosErr = sqrt(thisPosErr);
-            thisPosErr = sum(thisPosErr,2);            
-            
+            thisPosErr = sum(thisPosErr,2);
+
             % normalize:
-            if(sum(qDecideMessy ,1) == 0)
-                qDecideMessy (1) = 1;
+            if(sum(qDecideMessy ,1) > 0)
+                qDecideMessy (:) = 1/7;
             end
             if(sum(qDecideTrue ,1) == 0)
-                qDecideTrue (1) = 1;
+                qDecideTrue (:) = 1/7;
             end
             
-            qDecideMessy = qDecideMessy / sum(qDecideMessy ,1);
             qDecideTrue = qDecideTrue / sum(qDecideTrue ,1);
              
             
@@ -742,8 +694,7 @@ classdef QAQ < handle
             delta = pSum  - oldpIncorrectActons;
             this.M2IncorrectAction = this.M2IncorrectAction + delta.*(pSum - this.pIncorrectAction);
             this.vIncorrectAction = this.M2IncorrectAction./(this.numActions - 1);   
-            
-            
+
             %%%%%%%%%%%%%%%%%%%%%%%%%
             % distance calulations
             %%%%%%%%%%%%%%%%%%%%%%%%
@@ -759,133 +710,12 @@ classdef QAQ < handle
             
             delta = pSum  - olddIncorrectMeasurement;
             this.M2IncorrectMeasurement  = this.M2IncorrectMeasurement  + delta.*(pSum - this.dIncorrectMeasurement );
-            this.vIncorrectMeasurement  = this.M2IncorrectMeasurement ./(this.numActionsDistance - 1);               
-        end
-                
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        % Get the action from the learning layer, considering the current
-        % robotState
-        function [action, actionId,experienceProfile,acquiescence] = Act(this,rstate)
-            %make sure we are working toward the right target (box)
-            this.IncrementAcquiescenceLimit();
-            
-            %make sure we are working toward the right target (box)
-            % increment epoch counters
-            acquiescence =  this.EpochCounter(rstate);
-            
-            %choice = [acquiescence this.targetId this.robotId]
-            %Stop robot from working toward a taken or returned task
-            this.CheckUnavaliableTask(rstate);
-            
-            %make sure we are working toward the right target (box)
-            this.simulationRunActions = this.simulationRunActions +1;
-            [targets,obstacles,goal,borderOfWorld,robot,targProp,robotProperties] = rstate.GetCurrentState();
-            if(this.targetId > 0)
-                this.simulationRunActionsTarget = this.simulationRunActionsTarget +1;
-                for rcoop = 1:size(robotProperties,1)
-                    if(robotProperties(rcoop,1) == this.targetId && rcoop ~= this.robotId)
-                        this.simulationRunActionsTargetCoop = this.simulationRunActionsTargetCoop  +1;
-                    end
-                end
-            end
-            
-            % If we already have an action planned, do it.
-            if(this.actionCount > 0)
-                disp('Action count?!?');
-                this.actionCount = this.actionCount -1;
-                action = this. lastAction (2:3);
-                actionId = this.lastAction (1);
-                return;
-            end
- 
-            
+            this.vIncorrectMeasurement  = this.M2IncorrectMeasurement ./(this.numActionsDistance - 1);   
 
-            id = this.GetQualityId(rstate,0);
-
-
-           orientation = robot(6);
             
-            angle = this.angle.*(pi/180);
-            angle = bsxfun(@plus,angle,orientation);
-            angle = mod(angle, 2*pi);
-            
-            if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
-                [quality1,experienceProfile1,rawQuality1,sQuality1] = this.qlearning.GetUtility(id,0.01);
-                [quality2,experienceProfile2,rawQuality2,sQuality2] = this.advisorqLearning.GetUtility(id,0.01);
-                if(sum(rawQuality1,1)*this.adviceThreshold  > sum(rawQuality2,1))
-                    quality = quality1;
-                    experienceProfile = experienceProfile1;
-                    rawQuality = rawQuality1;
-                    sQuality = sQuality1;
-                else
-                    quality = quality2;
-                    experienceProfile = experienceProfile2;
-                    rawQuality = rawQuality2;
-                    sQuality = sQuality2;
-                end
-            else
-                [quality,experienceProfile,rawQuality,sQuality] = this.advisorqLearning.GetUtility(id,0.01);
-            end
-            quality = exp(sQuality); %We don't need to normalize obviously.
-            
-
-            qDecide = [quality(1) this.stepSize 0; 
-                       quality(2) 0 this.rotationSize;
-                       quality(3) 0 -this.rotationSize;
-                       quality(4) this.boxForce angle(1);
-                       quality(5) this.boxForce angle(2);
-                       quality(6) this.boxForce angle(3);
-                       quality(7) this.boxForce angle(4)];
-            
-                   
-            this.UpdateIncorrectActions(rawQuality,rstate);
-                   
-            totalQual = sum(quality);
-            zeroQual = (quality == 0);
-            %make sure every action has at least 0.005 (0.5%)probability
-            %this will help discover new actions, a tiny tiny bit...
-            
-            quality = quality + zeroQual.*totalQual.*0.05;
-            totalQual = sum(quality);
-            actionSelect = totalQual*rand(); %pick a number
-            
-            i = 0;
-            index =1;
-            num = 0;
-            while (num < actionSelect)
-                i = i+1;
-                num = num + quality(i);
-                if num > actionSelect
-                    index = i;
-                    %actionIsSelected = index
-                    break;
-                end
-            
-            end
-            
-            %[decision,index] = max(qDecide(:,1));
-            %action = qDecide(index,1:3);
-            
-            
-            action = qDecide(index,2:3);
-            this.lastAction = [index action];
-            
-           % if(index ==1 || index >3)
-           %     this.actionCount = 2;
-           % end
-            actionId = index;
             
         end
         
-        
-  
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -900,8 +730,8 @@ classdef QAQ < handle
             
             numActions = this.numActions;
             
-        end        
-        
+        end
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -916,8 +746,8 @@ classdef QAQ < handle
             numActions = this.numActionsDistance;
             
         end        
-                
         
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
         %   
@@ -936,6 +766,7 @@ classdef QAQ < handle
             numLearns = this.numLearns;
             
         end
+        
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
@@ -985,6 +816,8 @@ classdef QAQ < handle
             val = this.qlearning.quality.GetUpdates();
         end
         
+
+        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -1001,7 +834,11 @@ classdef QAQ < handle
             rwdfalse =  this.LearnFromUpdate(state,actionId,1,1);
             rwdtrue = this.LearnFromUpdate(state,actionId,0,0);
             val = rwdfalse - rwdtrue;
-
+            if(this.numLearns == 0)
+                this.aIncorrectReward = val;
+                this.numLearns = 1;
+            end
+                    
             delta = val  -  this.aIncorrectReward;
             this.aIncorrectReward = ((this.aIncorrectReward *this.numLearns) + val)/(this.numLearns+1);
             this.M2IncorrectReward = this.M2IncorrectReward + delta.*(val - this.aIncorrectReward);
@@ -1016,12 +853,30 @@ classdef QAQ < handle
             this.aFalseReward = ((this.aFalseReward *this.numLearns) + rwdfalse)/(this.numLearns+1);
             this.M2FalseReward = this.M2FalseReward + delta.*(rwdfalse - this.aFalseReward);
             this.vFalseReward = this.M2FalseReward./(this.numLearns);   
-            this.numLearns =this.numLearns + 1; 
+            
+            this.numLearns =this.numLearns + 1;
+        end
+        
+        function UpdateMotivation(this,rewardIndividual,state)
+                [relativeTargetPos,relativeObstaclePos,goalPos,borderOfWorld,robot,targProp] = state.GetCurrentState();
+                confidence = relativeTargetPos(:,1);
+                confidence = sqrt(confidence)'./this.stepSize ; 
+                
+                if(this.useDistance == 0)
+                    confidence = confidence .*0;
+                end
+                this.lalliance.UpdateMotivation(rewardIndividual,state,confidence);
+        end
+        
+        
+        function rwd = CalculateTeamReward(this)
+        
+        
         end
         
         function val = LearnFromUpdate(this,state,actionId,updateQVals,sensorTruth )
             if(actionId == 0 && updateQVals==1)
-
+                this.UpdateMotivation(0,state);
                 val = 0;
                 return;
             end
@@ -1070,7 +925,7 @@ classdef QAQ < handle
                 %do one step of QLearning
                 if( updateQVals ==1)
                     this.qlearning.Learn(id,idNew,actionId,reward);
-
+                    this.UpdateMotivation(reward,state);
                     this.simulationRunLearns = this.simulationRunLearns +1;
                     this.simulationRewardObtained = this.simulationRewardObtained  + reward;
                     if(this.advexc_on == 1)
@@ -1105,12 +960,10 @@ classdef QAQ < handle
                 if targProp(this.targetId,1) == 1 %if it's finished now!
                     reward = reward + 10; %MASSIVE reward for returning box
                 end
-                        
             end
             
             
             %  Reward for moving x m closer to the chosen box
-            
             if distance > this.triggerDistance*50
                 distance = distance /100;
                 rwdAdd = 0.5 + 0.5*((abs(distance)+1))*this.rewardDistanceScale;
@@ -1126,15 +979,14 @@ classdef QAQ < handle
             %if targets_change(this.targetId,distanceIndex ) < -0.15
             if targets_change(this.targetId,distanceIndex ) < -this.triggerDistance*50
                 dist = targets_change(this.targetId,distanceIndex ) ;
-                dist = dist /100;
+                dist= dist/100;
                 reward = reward + 0.5 + 0.5*((abs(dist)+1))*this.rewardDistanceScale;
 %8) Reward for moving farther from box by x m	-0.3
             elseif targets_change(this.targetId,distanceIndex ) > this.triggerDistance*50
                 dist = targets_change(this.targetId,distanceIndex ) ;
-                dist = dist /100;
+                dist= dist/100;
                 reward = reward - 0.3 - 0.3*((abs(dist)+1))*this.rewardDistanceScale;
             end
-
 
 %3) Reward for reaching box	+1
 %4) Reward for reaching target zone	+3
@@ -1153,6 +1005,7 @@ classdef QAQ < handle
             if( updateQVals == 1)
                 %do one step of QLearning
                 this.qlearning.Learn(id,idNew,actionId,reward);
+                this.UpdateMotivation(reward,state);
 
                 this.simulationRunLearns = this.simulationRunLearns +1;
                 this.simulationRewardObtained = this.simulationRewardObtained  + reward;
@@ -1169,7 +1022,6 @@ classdef QAQ < handle
             val = reward;
             
         end
-        
         
         %function [reward, decisions, targetReward] = GetTotalReward(this)
         %    reward = this.qlearning.rewardObtained;
@@ -1212,24 +1064,15 @@ classdef QAQ < handle
         %   
         %   
         %   
-        function qualityId = GetQualityId(this,state,fromSavedState)
+        function qualityId= GetQualityId(this,state,fromSavedState)
 
-            qualityId = this.GetNewQualityIdFromState(state,fromSavedState,0);
+            qualityId  = this.GetNewQualityIdFromState(state,fromSavedState,0);
+            
         end
+        function groundId = GetTrueQualityId(this,state,fromSavedState)
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function qualityId = GetTrueQualityId(this,state,fromSavedState)
-
-            qualityId = this.GetNewQualityIdFromState(state,fromSavedState,1);
+            groundId = this.GetNewQualityIdFromState(state,fromSavedState,1);
         end
-                
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
@@ -1282,15 +1125,30 @@ classdef QAQ < handle
             by = this.worldHeight*2;
 
             %5 bits each
-             id= [this.EncodePos(targetPosEnc,orient )...
-             this.EncodePos(goalPosEnc,orient )...
-             this.EncodePos(borderPosEnc ,orient )...
-             this.EncodePos(closestObs,orient)...
-             targetType ...
-             ];
+            if(this.useCompressedSensing == 1)
+                fullVector = [targetPosEnc 0 goalPosEnc 0 borderPosEnc 0 closestObs 0];
+                compressSize = 4;
+                id = RunCompressedSensing(this,fullVector,compressSize);
+                id = [id'  targetType];
+                id = double(id);
+            else
+                id= [this.EncodePos(targetPosEnc,orient )...
+                 this.EncodePos(goalPosEnc,orient )...
+                 this.EncodePos(borderPosEnc ,orient )...
+                 this.EncodePos(closestObs,orient)...
+                 targetType ...
+                 ];
+                
+            end
+         
+            %if(~isempty(xCompress ))
+            %    id = [abs(xCompress') targetType];
+            %    id = double(id);
+            %end
              qualityId = id;
              
         end
+  
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -1299,23 +1157,10 @@ classdef QAQ < handle
         %   
         %   
         %   
-      function val = GetMemoryOccupancy(this)
-        val = this.qlearning.quality.OccupancyPercentage();
-      end
-      
-      
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % 
-        %   Class Name
-        %   
-        %   Description 
-        %   
-        %   
-        %   
-        function LoadAfterSave(this,cdIn)
-            this.s_encodedCodes.Fill(cdIn);
+        function val = GetMemoryOccupancy(this)
+            val = this.qlearning.quality.OccupancyPercentage();
         end
-        
+      
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % 
         %   Class Name
@@ -1336,6 +1181,7 @@ classdef QAQ < handle
         %[d(1) d(2) o]
         %if(this.encodedCodes(d(1),d(2),o) ~= 0)
         %    code = this.encodedCodes(d(1),d(2),o);
+        %testCode = this.s_encodedCodes.Get([d(1) d(2) o]);
         if(d(1) < 0) d(1) = 0; end
         if(d(2) < 0) d(2) = 0; end
         if(d(1) >200) d(1) = 200; end
@@ -1343,6 +1189,7 @@ classdef QAQ < handle
         
         testCode = this.s_encodedCodes.cd(d(1), d(2), o);
         %testCode = this.s_encodedCodes.Get(d(1), d(2), o);
+        
         if(testCode ~= 0 || isnan(testCode))
             code = testCode;
             return;
@@ -1367,13 +1214,32 @@ classdef QAQ < handle
 
             code = positionCode +distanceCode;
             code = full(code);
-            %this.s_encodedCodes.Set(d(1), d(2), o,code);
 
             this.s_encodedCodes.cd(d(1), d(2), o) = code;
+            %this.s_encodedCodes.Set(d(1), d(2), o,code);
             
-            %this.s_encodedCodes(d(1),d(2),o) = code;
         end
       end
+      
+        function InitCompressSensing(this)
+            this.dict = -10*ones(2,this.sizeCol) +rand(2,this.sizeCol)*20;
+            dictb = [zeros(1,this.sizeCol) ];
+            this.dict = [this.dict; dictb];
+            this.dict = [this.dict ;this.dict ;this.dict ;this.dict ];
+        
+        end
+        
+        function xCompress = RunCompressedSensing(this,fullVector,compressSize)
+            xCompress = [];
+            if(this.firstCompress ==0)
+                this.firstCompress =1;
+                this.workingDict  = compress([],[],this.dict,compressSize);
+            else
+                x = fullVector';
+                xCompress = compress(x,this.workingDict,this.dict,compressSize );
+                %size(this.workingDict)    
+            end
+        end
       
   end
     

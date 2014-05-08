@@ -116,13 +116,13 @@ classdef Qlearning <handle
         %   
         %   
         %   
-        function [quality,exp,rawQuality] = GetUtility(this,id,randomnessDepth)
+        function [quality,expe,rawQuality,lQuality] = GetUtility(this,id,randomnessDepth)
             
             id = double(id);
-            [quality, exp ] = this.quality.Get(id);
+            [quality, expe ] = this.quality.Get(id);
             
             quality = quality(1:this.actionNum );
-            exp = exp(1:this.actionNum );
+            expe = expe(1:this.actionNum );
             rawQuality = quality;
             
             if(sum(quality) >= randomnessDepth)
@@ -131,6 +131,7 @@ classdef Qlearning <handle
                 quality = rand(this.actionNum ,1);
                 this.randomActions = this.randomActions + 1;
             end
+            lQuality = log(quality);
         end        
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
