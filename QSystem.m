@@ -464,6 +464,7 @@ classdef QSystem < handle
             angle = this.angle.*(pi/180);
             angle = bsxfun(@plus,angle,orientation);
             angle = mod(angle, 2*pi);
+<<<<<<< HEAD
             
             if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
                 [quality1,experienceProfile1,rawQuality1,sQuality1] = this.qlearning.GetUtility(id,0.01);
@@ -484,6 +485,10 @@ classdef QSystem < handle
             end
             quality = exp(sQuality); %We don't need to normalize obviously.
             
+=======
+
+            quality = exp(quality); %We don't need to normalize obviously.
+>>>>>>> be93358499f501da28d5812ec9371260466db80d
             
             qDecide = [quality(1) this.stepSize 0; 
                        quality(2) 0 this.rotationSize;

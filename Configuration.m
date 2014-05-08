@@ -473,10 +473,16 @@ classdef Configuration < handle
             end     
             
             if(timeLimitOff == 1)
+<<<<<<< HEAD
                 disp('Time Limit Largeish');
                %config.numIterations = 10000000000000;
                %config.numIterations = 100000000;
                 config.numIterations = 100000;
+=======
+                disp('Time Limit Forced Large');
+                %config.numIterations = 10000000000000;
+                config.numIterations = 100000000;
+>>>>>>> be93358499f501da28d5812ec9371260466db80d
                 config.lalliance_acquiescence = 20000; %long acquiescence limit                
             else
                 disp('Time Limit Forced On');
