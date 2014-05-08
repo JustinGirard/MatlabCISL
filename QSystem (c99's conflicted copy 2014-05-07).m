@@ -459,32 +459,14 @@ classdef QSystem < handle
             
             [id,closestTargets] = this.GetQualityId(rstate,0);
             
+            [quality,experienceProfile,rawQuality] = this.advisorqLearning.GetUtility(id,0.01);
+            
             this.targetId = robotProperties(this.robotId,1);
             orientation = robot(6);
             angle = this.angle.*(pi/180);
             angle = bsxfun(@plus,angle,orientation);
             angle = mod(angle, 2*pi);
-            
-            if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
-                [quality1,experienceProfile1,rawQuality1,sQuality1] = this.qlearning.GetUtility(id,0.01);
-                [quality2,experienceProfile2,rawQuality2,sQuality2] = this.advisorqLearning.GetUtility(id,0.01);
-                if(sum(rawQuality1,1)*this.adviceThreshold  > sum(rawQuality2,1))
-                    quality = quality1;
-                    experienceProfile = experienceProfile1;
-                    rawQuality = rawQuality1;
-                    sQuality = sQuality1;
-                else
-                    quality = quality2;
-                    experienceProfile = experienceProfile2;
-                    rawQuality = rawQuality2;
-                    sQuality = sQuality2;
-                end
-            else
-                [quality,experienceProfile,rawQuality,sQuality] = this.advisorqLearning.GetUtility(id,0.01);
-            end
-            quality = exp(sQuality); %We don't need to normalize obviously.
-            
-            
+
             qDecide = [quality(1) this.stepSize 0; 
                        quality(2) 0 this.rotationSize;
                        quality(3) 0 -this.rotationSize;
