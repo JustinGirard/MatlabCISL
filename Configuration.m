@@ -482,11 +482,14 @@ classdef Configuration < handle
                 disp('Time Limit Forced On');
                 config.numIterations = 15000;
             end
+<<<<<<< HEAD
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                 config.numTest = 5;
                 config.numIterations = 5; 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
+=======
+>>>>>>> e0d3a817664173b0f36374a445989cb82ccdec82
         end
     end
     methods
