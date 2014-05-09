@@ -508,38 +508,12 @@ classdef QAL < handle
             end
             
             id = this.GetQualityId(rstate,0);
-<<<<<<< HEAD
             
-=======
-<<<<<<< HEAD
-            
-=======
-            if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
-                [quality1,experienceProfile1,rawQuality1] = this.qlearning.GetUtility(id,0.01);
-                [quality2,experienceProfile2,rawQuality2] = this.advisorqLearning.GetUtility(id,0.01);
-                if(sum(rawQuality1,1)*this.adviceThreshold  > sum(rawQuality2,1))
-                    quality = quality1;
-                    experienceProfile = experienceProfile1;
-                    rawQuality = rawQuality1;
-                else
-                    quality = quality2;
-                    experienceProfile = experienceProfile2;
-                    rawQuality = rawQuality2;
-                end
-            else
-                [quality,experienceProfile,rawQuality] = this.advisorqLearning.GetUtility(id,0.01);
-            end
->>>>>>> be93358499f501da28d5812ec9371260466db80d
->>>>>>> 48ab8a1eb37b5b9e9837d21bfce37c870515be4e
             orientation = robot(6);
             angle = this.angle.*(pi/180);
             angle = bsxfun(@plus,angle,orientation);
             angle = mod(angle, 2*pi);
             
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 48ab8a1eb37b5b9e9837d21bfce37c870515be4e
             
             if(this.adviceThreshold > 0 && this.advisorqLearning ~= this.qlearning)
                 [quality1,experienceProfile1,rawQuality1,sQuality1] = this.qlearning.GetUtility(id,0.01);
@@ -559,12 +533,6 @@ classdef QAL < handle
                 [quality,experienceProfile,rawQuality,sQuality] = this.advisorqLearning.GetUtility(id,0.01);
             end
             quality = exp(sQuality); %We don't need to normalize obviously.
-<<<<<<< HEAD
-=======
-=======
-            quality = exp(quality); %We don't need to normalize obviously.
->>>>>>> be93358499f501da28d5812ec9371260466db80d
->>>>>>> 48ab8a1eb37b5b9e9837d21bfce37c870515be4e
             
             qDecide = [quality(1) this.stepSize 0; 
                        quality(2) 0 this.rotationSize;
@@ -1282,4 +1250,3 @@ classdef QAL < handle
   end
     
 end
-
