@@ -265,7 +265,7 @@ classdef Configuration < handle
             %starting with 1000? Then do mini tests
             if(robotNum == 2)
                 disp('3 robots');
-                config.numTest = 300;
+                config.numTest = 300; 
                 config.numRun = 1;
                 config.numIterations = 2000;
                 config.numRobots = 3;
@@ -286,9 +286,9 @@ classdef Configuration < handle
             
             elseif(robotNum == 3)
                 disp('8 robots');
-                config.numTest = 300;
+                config.numTest = 300; 
                 config.numRun = 1;
-                config.numIterations = 15000;
+                config.numIterations = 15000; 
                 config.numRobots = 8;
                 config.numObstacles = 4;
                 config.numTargets = 8;    
@@ -482,6 +482,11 @@ classdef Configuration < handle
                 disp('Time Limit Forced On');
                 config.numIterations = 15000;
             end
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                config.numTest = 5;
+                config.numIterations = 5; 
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            
         end
     end
     methods
