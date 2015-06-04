@@ -103,7 +103,8 @@ classdef QAQ < handle
         lastTargetId = 0;
         lastTargetPos = [0 0];
         rewardDistanceScale = 0;
-        
+        adviceThreshold = 0;
+        useHal = 0;
     end
     
     
